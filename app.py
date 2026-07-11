@@ -480,7 +480,10 @@ def _cmd_translate(args):
 
 def _cmd_serve(args):
     port = int(args.port)
-    app.run(host="0.0.0.0", debug=args.debug, port=port)
+    debug = args.debug
+    if os.environ.get("FLASK_DEBUG", "").lower() in ("0", "false", "no"):
+        debug = False
+    app.run(host="0.0.0.0", debug=debug, port=port)
 
 
 from streamio_addon import register_streamio_routes
@@ -495,7 +498,7 @@ if __name__ == '__main__':
     p_serve = sub.add_parser("serve", help="Run the web server (HTML front end)")
     p_serve.add_argument("--port", default="5000", help="Port (default: 5000)")
     p_serve.add_argument("--no-debug", action="store_false", dest="debug", help="Disable debug mode")
-    p_serve.set_defaults(debug=True, func=_cmd_serve)
+    p_serve.set_defaults(debug=False, func=_cmd_serve)
 
     p_t = sub.add_parser("translate", help="Translate an SRT file from the CLI")
     p_t.add_argument("input", help="Input .srt file path")
@@ -507,5 +510,5 @@ if __name__ == '__main__':
     if not parsed.command:
         parsed.func = _cmd_serve
         parsed.port = "5000"
-        parsed.debug = True
+        parsed.debug = False
     parsed.func(parsed)

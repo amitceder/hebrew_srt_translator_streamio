@@ -19,4 +19,6 @@ COPY . .
 
 EXPOSE 5000
 
-CMD ["python", "app.py"]
+ENV FLASK_DEBUG=0
+
+CMD ["python", "app.py", "serve", "--no-debug", "--port", "5000"]

@@ -41,5 +41,6 @@ HTPC_ENV
 cloudflared-config.yml
 cloudflared
 .quick_tunnel.log
+.quick_tunnel.pid
 quick_tunnel.out
 CURRENT_ADDON_URL.txt

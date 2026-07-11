@@ -7,6 +7,8 @@
 #   4) (re)starts ONLY the srt-streamio container with that URL
 #   5) keeps the tunnel running in the foreground (Ctrl+C stops the tunnel)
 #
+# For background mode (shell can close), use: ./start_quick_tunnel.sh
+#
 # NOTE: the URL changes every time you run this. After it prints the manifest
 # URL, you must (re)add that manifest in Stremio.
 set -euo pipefail

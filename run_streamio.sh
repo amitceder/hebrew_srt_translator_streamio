@@ -12,7 +12,17 @@ CONTAINER_NAME="srt-streamio"
 HOST_PORT="${STREAMIO_PORT:-${STREMIO_PORT:-5055}}"
 
 DOCKER="docker"
-docker info >/dev/null 2>&1 || DOCKER="sudo docker"
+if ! docker info >/dev/null 2>&1; then
+  DOCKER=(sudo -S docker)
+fi
+
+docker_cmd() {
+  if [[ "${DOCKER[0]:-}" == "sudo" ]]; then
+    echo "${SUDO_PASSWORD:-admin}" | sudo -S docker "$@"
+  else
+    docker "$@"
+  fi
+}
 
 # Load private env (secrets + public URL). Never commit HTPC_ENV.
 if [[ -f ./HTPC_ENV ]]; then
@@ -50,15 +60,16 @@ OPEN_SUBTITLES_LANGUAGES="${OPEN_SUBTITLES_LANGUAGES:-en,ar,hr,el,tr}"
 STREAMIO_PRIMARY_SOURCE_LANGUAGES="${STREAMIO_PRIMARY_SOURCE_LANGUAGES:-en,ar}"
 
 echo "Step 1: Building Streamio image ($IMAGE_NAME)..."
-$DOCKER build -t "$IMAGE_NAME" .
+docker_cmd build -t "$IMAGE_NAME" .
 
 echo "Step 2: Cleaning up ONLY the Streamio container ($CONTAINER_NAME)..."
-$DOCKER stop "$CONTAINER_NAME" >/dev/null 2>&1 || true
-$DOCKER rm "$CONTAINER_NAME" >/dev/null 2>&1 || true
+docker_cmd stop "$CONTAINER_NAME" >/dev/null 2>&1 || true
+docker_cmd rm "$CONTAINER_NAME" >/dev/null 2>&1 || true
 
 echo "Step 3: Launching Streamio addon on bridge port ${HOST_PORT}..."
-$DOCKER run -d \
-  -p "${HOST_PORT}:5000" \
+docker_cmd run -d \
+  -p "127.0.0.1:${HOST_PORT}:5000" \
+  -e FLASK_DEBUG=0 \
   -e GROQ_API_KEY="$GROQ_API_KEY" \
   -e GROQ_MODEL="${GROQ_MODEL:-llama-3.1-8b-instant}" \
   -e AI_PARALLEL_WORKERS="${AI_PARALLEL_WORKERS:-2}" \
@@ -88,5 +99,5 @@ echo "Manifest:      ${STREAMIO_PUBLIC_BASE_URL}/manifest.json"
 echo "Local docker 'srt-app' was NOT touched."
 echo "------------------------------------------------"
 if [[ "${NO_LOGS:-0}" != "1" ]]; then
-  $DOCKER logs -f "$CONTAINER_NAME"
+  docker_cmd logs -f "$CONTAINER_NAME"
 fi
