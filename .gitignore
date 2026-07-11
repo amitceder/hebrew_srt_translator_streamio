@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+env/
+.env
+*.egg-info/
+.eggs/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs and temp
+*.log
+*.tmp
+.cache/
+streamio_cache/
+stremio_cache/
+*.srt
+
+# User-provided subtitle drop-ins (keep folder, ignore personal files)
+manual_sources/*
+!manual_sources/README.txt
+
+# Local notes (do not commit)
+todo.md
+
+# Private environment (never commit real secrets)
+HTPC_ENV
+cloudflared-config.yml
+cloudflared
+.quick_tunnel.log
+quick_tunnel.out
+CURRENT_ADDON_URL.txt

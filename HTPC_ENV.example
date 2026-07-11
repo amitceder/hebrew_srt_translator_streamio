@@ -1,0 +1,9 @@
+# Copy these into the HTPC shell environment or a private env file.
+# Never commit the real values.
+export GROQ_API_KEY='replace-me'
+export OPEN_SUBTITLES_API_KEY='replace-me'
+export OPEN_SUBTITLES_USERNAME='your-opensubtitles-username'
+export OPEN_SUBTITLES_PASSWORD='your-opensubtitles-password'
+export OPEN_SUBTITLES_USER_AGENT='HebrewAIStreamioAddon v0.1'
+export STREAMIO_PUBLIC_BASE_URL='https://your-stable-public-host'
+export STREAMIO_TOKEN_SECRET='replace-with-a-long-random-secret'
