@@ -1,71 +1,83 @@
 # Stremio Hebrew AI subtitle addon
 
-The existing Flask service now also exposes a Stremio subtitle addon at:
+The Flask service exposes a Stremio subtitle addon at:
 
 ```text
 https://YOUR_PUBLIC_HOST/manifest.json
 ```
 
-The addon receives the video hash, file size, filename, and IMDb episode ID
-from Stremio. It finds an English or Arabic source subtitle through
-OpenSubtitles, then runs the existing Google baseline + Groq contextual polish
-pipeline. The translated SRT is cached on the server, so repeated playback
-does not translate the same file again.
+Stremio sends the video hash, file size, filename, and IMDb id. The addon finds
+a source subtitle through OpenSubtitles, verifies it is the correct movie
+(runtime/hash based), then runs the Google baseline + Groq contextual polish
+pipeline and returns a cached Hebrew SRT. It prefers English/Arabic sources and
+falls back to other languages only when they are the ones actually synced to the
+played release (the output is Hebrew either way).
 
 ## Required server settings
 
-Set these on the HTPC before starting the container:
+Set these in `HTPC_ENV` (git-ignored) before starting the container:
 
 ```bash
 export GROQ_API_KEY='your-groq-key'
 export OPEN_SUBTITLES_API_KEY='your-opensubtitles-api-key'
-export OPEN_SUBTITLES_USER_AGENT='HebrewAIStremioAddon v0.1'
-export STREMIO_PUBLIC_BASE_URL='https://your-public-host'
-export STREMIO_TOKEN_SECRET='a-long-random-secret'
+export OPEN_SUBTITLES_USERNAME='your-opensubtitles-username'   # higher quota
+export OPEN_SUBTITLES_PASSWORD='your-opensubtitles-password'
+export OPEN_SUBTITLES_LANGUAGES='en,ar,hr,el,tr'
+export STREAMIO_PRIMARY_SOURCE_LANGUAGES='en,ar'
+export STREAMIO_PUBLIC_BASE_URL='https://your-public-host'      # no trailing slash
+export STREAMIO_TOKEN_SECRET='a-long-random-secret'
 ```
 
-`STREMIO_PUBLIC_BASE_URL` must be the HTTPS URL that Stremio on the phone and
-TV can reach. A private `10.x.x.x` address is suitable for local diagnostics,
-but it cannot be used for a community-listed addon.
+`STREAMIO_PUBLIC_BASE_URL` must be the HTTPS URL that Stremio on the phone, TV,
+and PC can reach. Legacy `STREMIO_*` names are still accepted as a fallback.
 
-## Start the existing container
+## Start the addon container
 
 ```bash
-./run.sh
+NO_LOGS=1 sudo ./run_streamio.sh
 ```
 
-Verify the service before installing it:
+This builds/starts only the `srt-streamio` container (the separate local
+`srt-app` container is never touched). Verify:
 
 ```bash
-curl -fsS https://your-public-host/healthz
-curl -fsS https://your-public-host/manifest.json
+curl -fsS http://localhost:5055/healthz         # addon_version + config flags
+curl -sS -D - -o /dev/null http://localhost:5055/manifest.json | grep -i access-control
 ```
 
-Install by pasting the manifest URL into Stremio's addon search field. The
-addon appears as `Hebrew AI Subtitles` and offers `Hebrew AI (Google + Groq)`
-when Stremio asks for subtitles for a matching movie or episode.
+The manifest response includes `Access-Control-Allow-Origin: *`, which is
+required for the Stremio desktop app and Stremio Web to install the addon.
 
-## Recommended personal setup
+## Public HTTPS (Cloudflare)
 
-For your own phone and TV, keep the addon private and install its stable HTTPS
-manifest URL directly in Stremio. This avoids the extra Community catalog
-publication step. The HTPC still needs to stay online, and the HTTPS hostname
-must remain unchanged so the addon stays attached to your Stremio account.
+Two options:
 
-The Community catalog is useful only if you want other Stremio users to find
-the addon. It does not host the service or remove the HTPC/tunnel dependency.
+- **Quick tunnel (no domain):** keep it running with
+  `nohup ./run_quick_tunnel.sh > quick_tunnel.out 2>&1 &`. The full paste-ready
+  manifest URL is written to `CURRENT_ADDON_URL.txt`. The URL changes on every
+  restart and dies if the tunnel process stops, so reinstall it in Stremio each
+  time.
+- **Named tunnel (stable domain):** run `./setup_tunnel.sh yourdomain.com` once
+  (requires the domain's DNS to be active on Cloudflare), then keep it up with
+  `./run_tunnel.sh`. This gives a permanent URL you install once.
 
-## Community listing
+## Install in Stremio
 
-After the public HTTPS endpoint is working, publish the manifest URL to
-Stremio's central addon announcement endpoint:
+Paste the manifest URL (the full line in `CURRENT_ADDON_URL.txt`) into the
+Stremio Addons search/URL field on any device. It appears as `Hebrew AI`.
 
-```bash
-curl -fsS \
-  -H 'Content-Type: application/json' \
-  -d '{"transportUrl":"https://your-public-host/manifest.json","transportName":"http"}' \
-  -X POST https://api.strem.io/api/addonPublish
-```
+- Works on phone, TV, and PC/Web (PC/Web requires the CORS headers above and a
+  live public URL).
+- If a wrong/old subtitle is cached on a client, fully close and reopen the
+  Stremio app so it re-fetches.
 
-The endpoint should be tested first. A public listing does not make the
-translator work if the HTPC or the OpenSubtitles/Groq credentials are offline.
+## Manual source override
+
+If OpenSubtitles has no synced source for a specific release, drop a known-good
+`.srt` into `manual_sources/` named by IMDb id (e.g. `manual_sources/tt0427340.srt`).
+The addon translates that exact file instead of guessing.
+
+## Troubleshooting
+
+See `STREMIO_DEBUG_SUMMARY.md` for the full history of subtitle-selection and
+tunnel/CORS issues and how they were resolved.

@@ -21,7 +21,7 @@ else
   echo "No pid file; killing any matching cloudflared ..."
 fi
 
-pkill -f "cloudflared tunnel --no-autoupdate --url http://127.0.0.1:${LOCAL_PORT}" 2>/dev/null || true
-pkill -f "cloudflared tunnel --no-autoupdate --url http://localhost:${LOCAL_PORT}" 2>/dev/null || true
+pkill -f "cloudflared.*tunnel.*--url http://127.0.0.1:${LOCAL_PORT}" 2>/dev/null || true
+pkill -f "cloudflared.*tunnel.*--url http://localhost:${LOCAL_PORT}" 2>/dev/null || true
 
 echo "Quick tunnel stopped."

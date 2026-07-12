@@ -43,7 +43,7 @@ def _env(name: str, default: str = "", legacy: Optional[str] = None) -> str:
     return default
 
 
-ADDON_VERSION = "0.12.11"
+ADDON_VERSION = "0.12.12"
 OPEN_SUBTITLES_BASE_URL = os.environ.get(
     "OPEN_SUBTITLES_BASE_URL", "https://api.opensubtitles.com/api/v1"
 ).rstrip("/")
@@ -1624,6 +1624,18 @@ def register_streamio_routes(flask_app, process_translation) -> None:
     """Register Stremio protocol and health routes on the existing Flask app."""
 
     _start_cache_cleanup()
+
+    # Stremio's desktop app and Stremio Web load addons in a browser/Electron
+    # context that enforces CORS. Without these headers the manifest and
+    # subtitle endpoints are blocked on PC/Web (while the native mobile app,
+    # which ignores CORS, still works). Setting a permissive policy on every
+    # response is the standard Stremio addon requirement.
+    @flask_app.after_request
+    def _streamio_cors_headers(response):
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Headers"] = "*"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+        return response
 
     if OPEN_SUBTITLES_USERNAME and OPEN_SUBTITLES_PASSWORD:
         try:

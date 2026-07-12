@@ -21,7 +21,9 @@ LOG="./.quick_tunnel.log"
 
 echo ">> Starting Cloudflare Quick Tunnel to http://localhost:${LOCAL_PORT} ..."
 : > "$LOG"
-"$CF" tunnel --no-autoupdate --url "http://localhost:${LOCAL_PORT}" >"$LOG" 2>&1 &
+# The named-tunnel service installs /etc/cloudflared/config.yml.  A Quick
+# Tunnel must ignore it instead of inheriting named-tunnel credentials.
+"$CF" --config /dev/null tunnel --no-autoupdate --url "http://localhost:${LOCAL_PORT}" >"$LOG" 2>&1 &
 TUNNEL_PID=$!
 trap 'echo; echo ">> Stopping tunnel (pid $TUNNEL_PID)"; kill "$TUNNEL_PID" 2>/dev/null || true' EXIT INT TERM
 
@@ -46,7 +48,7 @@ elif grep -q '^export STREMIO_PUBLIC_BASE_URL=' ./HTPC_ENV; then
 else
   echo "export STREAMIO_PUBLIC_BASE_URL='${URL}'" >> ./HTPC_ENV
 fi
-echo "$URL" > ./CURRENT_ADDON_URL.txt
+echo "${URL}/manifest.json" > ./CURRENT_ADDON_URL.txt
 echo ">> Wrote STREAMIO_PUBLIC_BASE_URL into HTPC_ENV"
 
 # (Re)start ONLY the Streamio container with the new URL (no log tail).

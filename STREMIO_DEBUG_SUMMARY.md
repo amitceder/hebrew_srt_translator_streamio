@@ -1,118 +1,125 @@
-# Stremio Subtitle Debugging Summary
+# Stremio Addon Debugging Summary
+
+Running log of the bugs we hit and how the addon behaves now. Current addon
+version: **0.12.12**.
 
 ## Goal
 
-The addon should translate the correct synced source subtitle to Hebrew, especially for:
+Translate the **correct, synced** source subtitle to Hebrew for the played
+release, and never silently translate the wrong same-name movie.
 
-- IMDb: `tt0427340`
-- Played file: `Masters.Of.The.Universe.2026.RETAIL.DKSUBS.1080p.WEBRip.x264.AAC-[YTS.GG - YTS.BZ].mp4`
+Reference problem cases used throughout debugging:
 
-The important requirement after debugging is: **never silently translate the wrong same-name movie/release**.
+- `tt0427340` "Masters of the Universe" (2026) — collides with `tt41087705`
+  "Master of the Universe" (2026). OpenSubtitles misfiles one under the other.
+- `tt29355505` "Toy Story 5" (2026) — used to catch the fallback-language
+  regression below.
 
-## What Went Wrong
+## Source-selection model (current)
 
-Several different issues happened during the debugging loop:
+Identity is decided by **runtime**, not by release name or IMDb tag, because
+OpenSubtitles misfiles same-name films under each other's IMDb id.
 
-1. The addon originally selected OpenSubtitles `file_id=12611930`, release:
-   `Masters.Of.The.Universe.2026.1080p.HDTS.H264-OnlyFlix`.
+Priority when picking a source subtitle:
 
-   This was wrong for the played file, which is a `WEBRip/YTS` release. `HDTS`/cam timing does not match `WEBRip`.
+1. Manual drop-in `.srt` in `manual_sources/` (highest, bypasses OpenSubtitles).
+2. Candidate with `moviehash_match=True` (byte-for-byte the same video).
+3. Candidate whose subtitle runtime matches the expected feature length
+   (rejects the wrong 80-min film for a ~140-min movie), ranked by:
+   - matching release/source family first,
+   - **primary source language (English/Arabic) before fallback languages**,
+   - closest release name,
+   - closest runtime.
 
-2. Stremio sometimes called the subtitle list endpoint with only:
-   `filename=...`
+If nothing verifiable is found, the addon **fails closed** instead of guessing.
 
-   and sometimes with:
-   `filename=...&videoHash=...&videoSize=...`
+## Key bugs and fixes (chronological)
 
-   The addon sometimes acted on the weaker no-hash context.
+1. **Wrong same-name movie selected.** A noisy filename search returned a
+   different film (`imdb_match=False`, no feature imdb). Fix: non-hash
+   candidates must positively match the target IMDb id (v0.12.6).
 
-3. A later attempted fix let a "close release match" bypass runtime/identity checks. That caused a regression back toward wrong same-title selection.
+2. **Runtime hole.** If Cinemeta returned no runtime, a misfiled 80-min wrong
+   movie could pass. Fix: in strict mode a non-hash candidate is accepted only
+   when runtime is present AND matches; otherwise fail closed (v0.12.7).
 
-4. A context-merge bug dropped empty keys like `season` and `episode`, causing `KeyError: 'season'` and HTTP 502 when the subtitle file was requested.
+3. **Correct movie discarded as "wrong family".** The only correct-movie
+   English sub was an HDTS telesync; a family guard wrongly dropped it. Fix:
+   source family only affects sync ranking, never identity — a correct-movie
+   source is acceptable even if timing is imperfect (v0.12.8).
 
-5. Returning an empty subtitle list while waiting for hash made the addon disappear from the TV subtitle picker.
+4. **No synced English/Arabic for some releases.** For `tt0427340`, only
+   Greek/Turkish/Croatian subs are actually synced to the YTS WEBRip. Added
+   those as fallback source languages so we can still produce a synced Hebrew
+   track (v0.12.9–0.12.10). Since we output Hebrew, source language does not
+   need to be English.
 
-## Final Behavior
+5. **Fallback languages hijacked normal titles.** Toy Story 5 picked a Greek
+   source over a perfectly good English one because "closest release" beat
+   language. Fix: English/Arabic are explicit **primary** languages and win
+   over fallback languages when both are valid/synced
+   (`STREAMIO_PRIMARY_SOURCE_LANGUAGES`, v0.12.11).
 
-As of `v0.12.5`, the addon is designed to **fail closed**.
+6. **PC / Stremio Web could not install the addon.** The addon returned no CORS
+   headers. Desktop/Web enforce CORS; the native mobile app ignores it (hence
+   "works on phone, not PC"). Fix: permissive CORS headers on every response
+   (v0.12.12).
 
-Trusted source paths:
+7. **Dead public URL (Cloudflare 530).** Quick-tunnel URLs change on every
+   restart and die if the tunnel process stops. The saved URL pointed at a dead
+   tunnel, so the web app could not fetch the manifest. Not an addon bug — start
+   a fresh quick tunnel and reinstall the new URL. A named tunnel
+   (`hebrew-subs.streamio-amit.com`) is prepared but pending DNS.
 
-- Manual source `.srt` in `manual_sources/`.
-- OpenSubtitles candidate with `moviehash_match=True`.
-- Candidate that passes runtime validation and does not conflict with the played release family.
+Earlier fixes still in force: context merge/normalize (no more
+`KeyError: 'season'`), always advertise a track so the addon never disappears
+from the picker, source cache verified against metadata, cache cleanup.
 
-Rejected/unsafe paths:
+## Manual source escape hatch
 
-- `HDTS`/`CAM`/`TS` sources for a `WEBRip` played file.
-- Close release-name match alone as proof of correctness.
-- Fallback source selection when no moviehash is available and runtime cannot verify the candidate.
-- Wrong same-name title/release even if it has plausible popularity or IMDb metadata.
-
-## Current Verified Case
-
-For the problematic movie, the verifier confirms:
-
-```text
-OLD logic pick (runtime only): ('runtime_ok', 12611930)
-restored safety: HDTS is rejected for WEBRip playback
-NEW logic pick (v0.12.5): none
-```
-
-Meaning: the addon should no longer choose the wrong `HDTS` source. If no safe source is available, it should fail rather than show wrong Hebrew subtitles.
-
-## Manual Source Escape Hatch
-
-For a guaranteed synced subtitle, put the known-good English `.srt` here:
+For a guaranteed synced subtitle, drop a known-good `.srt` here:
 
 ```text
 manual_sources/tt0427340.srt
 ```
 
-Then restart:
-
-```bash
-NO_LOGS=1 sudo ./run_streamio.sh
-```
-
-Expected log:
+Expected log line when used:
 
 ```text
 Using MANUAL source subtitle: tt0427340.srt
 ```
 
-This is the most reliable path because it translates the exact source file that is already known to be synced.
+## Tunnel / public URL notes
 
-## Verification Commands
+- Quick tunnel (current): run and keep it alive with
+  `nohup ./run_quick_tunnel.sh > quick_tunnel.out 2>&1 &`.
+- The full paste-ready manifest link is written to `CURRENT_ADDON_URL.txt`
+  (now including `/manifest.json`).
+- The URL changes on every restart; reinstall it in Stremio each time until the
+  stable named-tunnel DNS is ready.
 
-Check deployed version:
+## Verification commands
 
-```bash
-curl -fsS http://localhost:5055/healthz | grep addon_version
-```
-
-Expected:
-
-```text
-0.12.5
-```
-
-Run local verifier:
+Deployed version:
 
 ```bash
-PYTHONDONTWRITEBYTECODE=1 python3 verify_subtitle_selection.py
+curl -fsS http://localhost:5055/healthz | grep addon_version   # expect 0.12.12
+```
+
+CORS header present (locally and over the tunnel):
+
+```bash
+curl -sS -D - -o /dev/null http://localhost:5055/manifest.json | grep -i access-control
 ```
 
 Watch source selection:
 
 ```bash
-sudo docker logs -f srt-streamio 2>&1 | grep -E "Resolving source|OST candidate|Skipping subtitle|Using|failed"
+sudo docker logs -f srt-streamio 2>&1 | grep -E "Resolving source|OST candidate|Runtime-verified|Skipping subtitle|Using|failed"
 ```
 
-## Confidence Statement
+## Confidence statement
 
-The code is now ironclad for the most important safety property:
-
-**It should not translate the wrong same-name/HDTS source for this WEBRip file.**
-
-It is not guaranteed to automatically find the exact same synced subtitle as OpenSubtitles v3, because Stremio does not expose v3's chosen file to this addon and our requests may not include a usable moviehash. In that case, the addon should fail closed or use a manual source file.
+Safety property held: the addon should not translate the wrong same-name film.
+It prefers English/Arabic, falls back to other synced languages only when
+needed, and fails closed when it cannot verify the correct movie.
